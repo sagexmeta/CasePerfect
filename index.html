@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CasePerfect – AML/KYC Case Workflow</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>CasePerfect <small>AML/KYC case workflow</small></h1>
+  <div class="actions">
+    <button id="btn-new" class="primary">+ New case</button>
+    <button id="btn-import">Import</button>
+    <button id="btn-export">Export all</button>
+    <input type="file" id="file-import" accept="application/json" hidden>
+  </div>
+</header>
+<main class="layout">
+  <aside id="case-list" aria-label="Cases"></aside>
+  <section id="case-view"><p class="empty">Select a case or create a new one.</p></section>
+</main>
+<dialog id="new-dialog">
+  <form method="dialog" id="new-form">
+    <h2>New case</h2>
+    <label>Customer name <input name="name" required></label>
+    <label>Customer type
+      <select name="type"><option value="individual">Individual</option><option value="entity">Legal entity</option></select>
+    </label>
+    <label>Country of residence / incorporation <input name="country" required></label>
+    <label>Trigger
+      <select name="trigger"><option>Onboarding</option><option>Periodic review</option><option>Transaction alert</option><option>Event-driven review</option></select>
+    </label>
+    <label>Analyst <input name="analyst"></label>
+    <div class="row"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Create</button></div>
+  </form>
+</dialog>
+<script src="app.js"></script>
+</body>
+</html>
