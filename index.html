@@ -3,38 +3,75 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CasePerfect – AML/KYC Case Workflow</title>
+<title>CasePerfect - Workflow Pain-Point Mapper</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
 <header class="topbar">
-  <h1>CasePerfect <small>AML/KYC case workflow</small></h1>
+  <div>
+    <h1>CasePerfect <small>Workflow pain-point mapper</small></h1>
+    <p class="tagline">Map research workflows, rank friction, and shape accessible product ideas.</p>
+  </div>
   <div class="actions">
-    <button id="btn-new" class="primary">+ New case</button>
+    <button id="btn-new" class="primary">+ New workflow</button>
+    <button id="btn-example">Load example</button>
     <button id="btn-import">Import</button>
     <button id="btn-export">Export all</button>
     <input type="file" id="file-import" accept="application/json" hidden>
   </div>
 </header>
-<main class="layout">
-  <aside id="case-list" aria-label="Cases"></aside>
-  <section id="case-view"><p class="empty">Select a case or create a new one.</p></section>
+
+<div id="live-status" class="sr-only" role="status" aria-live="polite"></div>
+
+<main id="main" class="layout">
+  <aside class="panel sidebar" aria-label="Workflow library">
+    <section id="dashboard-summary" class="stack"></section>
+    <section class="stack">
+      <div class="section-head">
+        <h2>Workflows</h2>
+        <p>Track recurring research and synthesis flows.</p>
+      </div>
+      <div id="workflow-list"></div>
+    </section>
+  </aside>
+
+  <section id="workflow-view" class="panel" aria-live="polite">
+    <div class="empty-state">
+      <h2>Start with a real workflow</h2>
+      <p>Create a workflow for research and note synthesis, then score the friction points that slow you down.</p>
+      <p>The app highlights the highest-impact pain points and helps you turn them into accessible product ideas.</p>
+    </div>
+  </section>
 </main>
+
 <dialog id="new-dialog">
   <form method="dialog" id="new-form">
-    <h2>New case</h2>
-    <label>Customer name <input name="name" required></label>
-    <label>Customer type
-      <select name="type"><option value="individual">Individual</option><option value="entity">Legal entity</option></select>
+    <h2>New workflow</h2>
+    <label>Workflow name <input name="name" maxlength="80" required></label>
+    <label>Primary goal <input name="goal" maxlength="120" required></label>
+    <label>Trigger or starting event <input name="trigger" maxlength="120" required></label>
+    <label>Frequency
+      <select name="frequency">
+        <option>Daily</option>
+        <option>Several times a week</option>
+        <option>Weekly</option>
+        <option>Monthly</option>
+        <option>Ad hoc</option>
+      </select>
     </label>
-    <label>Country of residence / incorporation <input name="country" required></label>
-    <label>Trigger
-      <select name="trigger"><option>Onboarding</option><option>Periodic review</option><option>Transaction alert</option><option>Event-driven review</option></select>
+    <label>Current tools <input name="tools" maxlength="160" placeholder="Browser tabs, docs, notes app, spreadsheets"></label>
+    <label>Success output <input name="output" maxlength="160" placeholder="Summary, memo, brief, decision, action list"></label>
+    <label>Accessibility needs or constraints
+      <textarea name="constraints" rows="3" placeholder="Keyboard-only use, low-friction capture, reduced switching, readable summaries"></textarea>
     </label>
-    <label>Analyst <input name="analyst"></label>
-    <div class="row"><button value="cancel" formnovalidate>Cancel</button><button value="ok" class="primary">Create</button></div>
+    <div class="row">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button value="ok" class="primary">Create workflow</button>
+    </div>
   </form>
 </dialog>
+
 <script src="app.js"></script>
 </body>
 </html>
