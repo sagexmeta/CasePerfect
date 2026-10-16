@@ -299,3 +299,21 @@ dialog::backdrop{background:rgba(15,23,42,.48)}
   .layout{padding:.75rem}
   .panel{padding:.9rem}
 }
+.dropdown{position:relative;display:inline-block}
+.dropdown ul{position:absolute;right:0;top:100%;margin:.25rem 0 0;padding:.25rem;list-style:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-width:10rem;z-index:20}
+.dropdown ul[hidden]{display:none}
+.dropdown li button{width:100%;text-align:left}
+#research-view[hidden]{display:none}
+.r-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:900px){.r-grid{grid-template-columns:1fr}}
+.r-card{border:1px solid var(--line);border-radius:8px;padding:.75rem;margin:.5rem 0;background:#fff}
+.r-card[draggable=true]{cursor:grab}
+.r-card.dragover{outline:2px dashed var(--brand)}
+.r-card textarea{width:100%}
+.r-cite{color:var(--muted);font-size:.85em;word-break:break-all}
+.r-canvas{min-height:14rem;border:2px dashed var(--line);border-radius:8px;padding:.5rem;background:#f8fafc}
+.r-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.5rem 0}
+.r-issue{background:var(--warn-soft);border-left:4px solid var(--warn);padding:.35rem .6rem;margin:.25rem 0}
+.r-bar{height:.6rem;background:var(--brand-soft);border-radius:4px;overflow:hidden}
+.r-bar>span{display:block;height:100%;background:var(--brand)}
+.r-result{white-space:pre-wrap}

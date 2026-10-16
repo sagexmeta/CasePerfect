@@ -18,6 +18,13 @@
     <button id="btn-example">Load example</button>
     <button id="btn-import">Import</button>
     <button id="btn-export">Export all</button>
+    <div class="dropdown" id="adv-menu">
+      <button id="btn-advanced" aria-haspopup="true" aria-expanded="false" aria-controls="adv-list">Advanced Features ▾</button>
+      <ul id="adv-list" role="menu" hidden>
+        <li role="none"><button role="menuitem" id="btn-search">Search</button></li>
+        <li role="none"><button role="menuitem" id="btn-draft">Draft</button></li>
+      </ul>
+    </div>
     <input type="file" id="file-import" accept="application/json" hidden>
   </div>
 </header>
@@ -43,6 +50,7 @@
       <p>The app highlights the highest-impact pain points and helps you turn them into accessible product ideas.</p>
     </div>
   </section>
+  <section id="research-view" class="panel" hidden aria-live="polite"></section>
 </main>
 
 <dialog id="new-dialog">
@@ -73,5 +81,6 @@
 </dialog>
 
 <script src="app.js"></script>
+<script src="research.js"></script>
 </body>
 </html>

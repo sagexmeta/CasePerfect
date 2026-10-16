@@ -23,3 +23,9 @@ Open `index.html` in a browser. The app still uses a simple three-file architect
 2. Add pain points for the steps that feel repetitive, slow, fragmented, or hard to review accessibly.
 3. Review the highest pain score and the generated opportunity brief.
 4. Add product concepts and compare value, convenience, accessibility benefit, effort, and confidence.
+
+## Advanced Features (research tool)
+- **Search**: look up an individual via public sources (Wikipedia API), capture passages with automatic citations, or paste text from any source. Captures are converted to paragraph-style verbiage.
+- **Draft**: drag/drop (or ↑/↓) captured items on a canvas, run **Spell/Grammar Check**, and open **Analyze → Advanced Analysis** (sentiment/emotion, tone, themes, summarization, entities, stylometry, argument mapping, readability, cross-document comparison, gap analysis).
+
+Note: analyses and checks are client-side heuristics; web search is limited to CORS-enabled public sources.
