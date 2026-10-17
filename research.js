@@ -1,24 +1,97 @@
 (function () {
   'use strict';
-  var KEY = 'caseperfect.research.v1';
+
+  var KEY = 'caseperfect.research.v2';
   var state = load();
-  var results = [];
   var dragId = null;
+  var currentView = 'search';
+  var ui = {
+    openCreateMenuCardId: '',
+    openAddMenuCardId: '',
+    pendingCardId: '',
+    loading: false,
+    focusingCardId: '',
+    error: ''
+  };
+  var MODELS = ['gpt-4.1-mini', 'gpt-4.1', 'gpt-5-mini'];
+  var TOOL_TYPES = ['web_search', 'web_search_preview'];
 
   function load() {
     try {
       var s = JSON.parse(localStorage.getItem(KEY));
-      if (s && Array.isArray(s.captures) && Array.isArray(s.canvas)) return s;
+      if (!s || typeof s !== 'object') throw new Error('bad state');
+      return {
+        captures: Array.isArray(s.captures) ? s.captures : [],
+        canvas: Array.isArray(s.canvas) ? s.canvas : [],
+        documents: Array.isArray(s.documents) ? s.documents.map(normalizeDocument).filter(Boolean) : [],
+        results: Array.isArray(s.results) ? s.results.map(normalizeCard).filter(Boolean) : [],
+        focusResults: Array.isArray(s.focusResults) ? s.focusResults.map(normalizeCard).filter(Boolean) : [],
+        lastQuery: String(s.lastQuery || ''),
+        focusQuery: String(s.focusQuery || ''),
+        lastSummary: String(s.lastSummary || ''),
+        focusSummary: String(s.focusSummary || ''),
+        settings: normalizeSettings(s.settings)
+      };
     } catch (e) {}
-    return { captures: [], canvas: [] };
+    return {
+      captures: [],
+      canvas: [],
+      documents: [],
+      results: [],
+      focusResults: [],
+      lastQuery: '',
+      focusQuery: '',
+      lastSummary: '',
+      focusSummary: '',
+      settings: normalizeSettings(null)
+    };
   }
+
+  function normalizeSettings(input) {
+    return {
+      apiKey: input && input.apiKey ? String(input.apiKey) : '',
+      model: input && input.model ? String(input.model) : 'gpt-4.1-mini'
+    };
+  }
+
+  function normalizeCard(card) {
+    if (!card || !card.id || !card.title) return null;
+    return {
+      id: String(card.id),
+      title: String(card.title),
+      summary: String(card.summary || ''),
+      reason: String(card.reason || ''),
+      url: String(card.url || ''),
+      source: String(card.source || ''),
+      publishedAt: String(card.publishedAt || ''),
+      query: String(card.query || ''),
+      origin: String(card.origin || 'search'),
+      focusPrompt: String(card.focusPrompt || '')
+    };
+  }
+
+  function normalizeDocument(doc) {
+    if (!doc || !doc.id || !doc.title) return null;
+    return {
+      id: String(doc.id),
+      title: String(doc.title),
+      items: Array.isArray(doc.items) ? doc.items.map(normalizeCard).filter(Boolean) : []
+    };
+  }
+
   function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
   function $(id) { return document.getElementById(id); }
-  function uid() { return 'C-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function uid(prefix) { return (prefix || 'C') + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function h(tag, attrs, kids) {
     var n = document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) {
       if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'html') n.innerHTML = attrs[k];
+      else if (k === 'value') n.value = attrs[k];
+      else if (k === 'class') n.className = attrs[k];
+      else if (k === 'checked') n.checked = !!attrs[k];
+      else if (k === 'hidden') n.hidden = !!attrs[k];
+      else if (k === 'disabled') n.disabled = !!attrs[k];
       else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), attrs[k]);
       else n.setAttribute(k, attrs[k]);
     });
@@ -28,17 +101,29 @@
   function status(msg) { $('live-status').textContent = msg; }
   function safeUrl(u) { return /^https?:\/\//i.test(u) ? u : ''; }
   function byId(id) { return state.captures.filter(function (c) { return c.id === id; })[0]; }
+  function documentById(id) { return state.documents.filter(function (d) { return d.id === id; })[0]; }
+  function cardById(id) {
+    return state.results.concat(state.focusResults).filter(function (card) { return card.id === id; })[0];
+  }
 
   // ---------- navigation ----------
   var menuBtn = $('btn-advanced'), menu = $('adv-list');
   function toggleMenu(open) { menu.hidden = !open; menuBtn.setAttribute('aria-expanded', String(open)); }
   menuBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleMenu(menu.hidden); });
-  document.addEventListener('click', function () { toggleMenu(false); });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest('#adv-menu')) toggleMenu(false);
+    if (!e.target.closest('.menu-wrap') && (ui.openCreateMenuCardId || ui.openAddMenuCardId)) {
+      ui.openCreateMenuCardId = '';
+      ui.openAddMenuCardId = '';
+      renderCurrent();
+    }
+  });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') toggleMenu(false); });
   $('btn-search').addEventListener('click', function () { show('search'); });
   $('btn-draft').addEventListener('click', function () { show('draft'); });
 
   function show(view) {
+    currentView = view;
     toggleMenu(false);
     $('workflow-view').hidden = true;
     var rv = $('research-view');
@@ -46,25 +131,313 @@
     rv.textContent = '';
     (view === 'search' ? renderSearch : renderDraft)(rv);
   }
+  function renderCurrent() {
+    if ($('research-view').hidden) return;
+    show(currentView);
+  }
   function closeBtn() {
-    return h('button', { text: '← Back to workflows', onclick: function () { $('research-view').hidden = true; $('workflow-view').hidden = false; } });
+    return h('button', {
+      text: '← Back to workflows',
+      onclick: function () {
+        $('research-view').hidden = true;
+        $('workflow-view').hidden = false;
+      }
+    });
   }
 
   // ---------- Search ----------
   function renderSearch(root) {
-    var q = h('input', { id: 'r-query', placeholder: 'Person name, e.g. Ada Lovelace', 'aria-label': 'Person to research' });
-    var form = h('form', { onsubmit: function (e) { e.preventDefault(); runSearch(q.value.trim()); } }, [
-      h('div', { class: 'r-row' }, [q, h('button', { class: 'primary', text: 'Search' })])
+    var query = h('textarea', {
+      id: 'r-query',
+      rows: '3',
+      'aria-label': 'Research query',
+      placeholder: 'Ask for sources, comparisons, implementation references, or background context.',
+      value: state.lastQuery
+    });
+    var apiKey = h('input', {
+      id: 'r-api-key',
+      type: 'password',
+      placeholder: 'OpenAI API key',
+      'aria-label': 'OpenAI API key',
+      value: state.settings.apiKey,
+      onchange: function () { state.settings.apiKey = apiKey.value.trim(); save(); status('API key updated.'); }
+    });
+    var model = h('select', {
+      id: 'r-model',
+      'aria-label': 'Responses model',
+      onchange: function () { state.settings.model = model.value; save(); status('Model updated.'); }
+    });
+    MODELS.forEach(function (m) {
+      var option = h('option', { value: m, text: m });
+      if (state.settings.model === m) option.selected = true;
+      model.appendChild(option);
+    });
+
+    var form = h('form', {
+      onsubmit: function (e) {
+        e.preventDefault();
+        runSearch(query.value.trim(), 'search', null);
+      }
+    }, [
+      h('div', { class: 'api-grid' }, [
+        h('label', {}, [h('span', { text: 'OpenAI API key' }), apiKey]),
+        h('label', {}, [h('span', { text: 'Responses model' }), model])
+      ]),
+      h('div', { class: 'helper', text: 'The key is stored only in this browser. Search and Focus use the OpenAI Responses API with web search.' }),
+      h('label', {}, [h('span', { text: 'Research query' }), query]),
+      h('div', { class: 'r-row' }, [h('button', { class: 'primary', text: ui.loading ? 'Searching...' : 'Search', disabled: ui.loading })])
     ]);
+
     root.appendChild(h('div', { class: 'r-row' }, [closeBtn(), h('h2', { text: 'Research: Search' })]));
-    root.appendChild(h('p', { text: 'Searches public sources (Wikipedia, Wikidata-linked pages) for information about an individual. Capture passages to save them with their citation, or paste text from any other source.' }));
+    root.appendChild(h('p', { text: 'Run AI-powered search, save useful result cards into documents, and Focus on promising cards for a deeper second pass.' }));
     root.appendChild(form);
-    var grid = h('div', { class: 'r-grid' }, [
-      h('div', {}, [h('h3', { text: 'Results' }), h('div', { id: 'r-results' })]),
-      h('div', {}, [h('h3', { text: 'Captured (' + state.captures.length + ')' }), h('div', { id: 'r-captures' }), manualForm()])
+    if (ui.error) root.appendChild(h('div', { class: 'warn', text: ui.error }));
+
+    var resultsColumn = h('div', {}, [
+      renderCardSection('Search results', state.results, state.lastQuery, state.lastSummary, 'search'),
+      renderCardSection('Focus results', state.focusResults, state.focusQuery, state.focusSummary, 'focus')
     ]);
-    root.appendChild(grid);
-    drawResults(); drawCaptures();
+
+    var sideColumn = h('div', {}, [
+      renderDocuments(),
+      h('div', { id: 'r-captures-wrap' }, [h('h3', { text: 'Captured (' + state.captures.length + ')' }), h('div', { id: 'r-captures' }), manualForm()])
+    ]);
+
+    root.appendChild(h('div', { class: 'r-grid' }, [resultsColumn, sideColumn]));
+    root.appendChild(documentDialog());
+    drawCaptures();
+  }
+
+  function renderCardSection(title, cards, query, summary, type) {
+    var wrap = h('div');
+    wrap.appendChild(h('h3', { text: title }));
+    if (query) wrap.appendChild(h('p', { class: 'meta-text', text: 'Query: ' + query }));
+    if (summary) wrap.appendChild(h('p', { class: 'meta-text', text: summary }));
+    if (!cards.length) {
+      wrap.appendChild(h('div', { class: 'empty', text: type === 'search' ? 'Run a search to generate result cards.' : 'Use Focus on a result card to see a more specific follow-up search.' }));
+      return wrap;
+    }
+    cards.forEach(function (card) { wrap.appendChild(renderResultCard(card, type)); });
+    return wrap;
+  }
+
+  function renderResultCard(card, type) {
+    var createOpen = ui.openCreateMenuCardId === card.id;
+    var addOpen = ui.openAddMenuCardId === card.id;
+    var focusBusy = ui.focusingCardId === card.id;
+    var sentences = snippetSentences(card);
+
+    var actions = h('div', { class: 'result-actions' }, [
+      h('div', { class: 'menu-wrap' }, [
+        h('button', {
+          class: 'icon-button',
+          'aria-label': 'Open create document menu',
+          'aria-expanded': String(createOpen),
+          onclick: function (e) {
+            e.stopPropagation();
+            ui.openCreateMenuCardId = createOpen ? '' : card.id;
+            ui.openAddMenuCardId = '';
+            renderCurrent();
+          },
+          text: '+'
+        }),
+        createOpen ? h('div', { class: 'menu-panel' }, [
+          h('button', {
+            text: 'Create New Document',
+            onclick: function () {
+              ui.pendingCardId = card.id;
+              ui.openCreateMenuCardId = '';
+              $('r-doc-form').reset();
+              $('r-doc-dialog').showModal();
+            }
+          })
+        ]) : null
+      ]),
+      h('div', { class: 'menu-wrap' }, [
+        h('button', {
+          'aria-label': 'Add result to saved document',
+          'aria-expanded': String(addOpen),
+          text: 'Add',
+          onclick: function (e) {
+            e.stopPropagation();
+            ui.openAddMenuCardId = addOpen ? '' : card.id;
+            ui.openCreateMenuCardId = '';
+            renderCurrent();
+          }
+        }),
+        addOpen ? renderAddMenu(card) : null
+      ]),
+      h('button', {
+        class: 'secondary',
+        text: focusBusy ? 'Focusing...' : 'Focus',
+        disabled: focusBusy,
+        onclick: function () { runSearch(focusPromptForCard(card), 'focus', card); }
+      })
+    ]);
+
+    var cardNode = h('div', { class: 'r-card result-card' }, [
+      h('div', { class: 'result-card-head' }, [
+        h('div', {}, [
+          h('h4', { text: card.title }),
+          h('p', { class: 'meta-text', text: [card.source, card.publishedAt, type === 'focus' ? 'Focus result' : 'Search result'].filter(Boolean).join(' · ') || 'AI result' })
+        ]),
+        actions
+      ]),
+      h('p', { text: card.summary }),
+      card.reason ? h('p', { class: 'meta-text', text: 'Why it matters: ' + card.reason }) : null,
+      card.url ? h('p', { class: 'r-cite' }, [h('a', { href: safeUrl(card.url), target: '_blank', rel: 'noopener noreferrer', text: card.url })]) : null,
+      h('div', { class: 'r-row' }, [
+        h('button', {
+          text: 'Capture all',
+          onclick: function () { addCapture(composeCaptureText(card), card.title, card.url); }
+        })
+      ])
+    ]);
+
+    sentences.forEach(function (sentence) {
+      cardNode.appendChild(h('button', {
+        text: 'Capture: “' + sentence.trim().slice(0, 40) + '…”',
+        title: sentence.trim(),
+        onclick: function () { addCapture(sentence, card.title, card.url); }
+      }));
+    });
+    return cardNode;
+  }
+
+  function renderAddMenu(card) {
+    if (!state.documents.length) {
+      return h('div', { class: 'menu-panel' }, [h('p', { class: 'menu-empty', text: 'No saved documents yet.' })]);
+    }
+    return h('div', { class: 'menu-panel' }, state.documents.map(function (doc) {
+      return h('button', {
+        text: doc.title,
+        onclick: function () {
+          if (addCardToDocument(card, doc.id)) status('Saved card to ' + doc.title + '.');
+          renderCurrent();
+        }
+      });
+    }));
+  }
+
+  function renderDocuments() {
+    var box = h('div');
+    box.appendChild(h('h3', { text: 'Saved documents (' + state.documents.length + ')' }));
+    if (!state.documents.length) {
+      box.appendChild(h('div', { class: 'empty', text: 'Use + on a result card to create a saved document, or Add to drop a card into an existing document.' }));
+      return box;
+    }
+
+    state.documents.forEach(function (doc) {
+      var wrap = h('div', { class: 'r-card' }, [
+        h('div', { class: 'card-head' }, [
+          h('div', {}, [h('h4', { text: doc.title }), h('p', { class: 'meta-text', text: doc.items.length + ' saved cards' })]),
+          h('button', {
+            class: 'danger',
+            text: 'Delete',
+            onclick: function () {
+              state.documents = state.documents.filter(function (d) { return d.id !== doc.id; });
+              save();
+              renderCurrent();
+              status('Document deleted.');
+            }
+          })
+        ])
+      ]);
+
+      doc.items.forEach(function (item) {
+        wrap.appendChild(h('div', { class: 'document-item' }, [
+          h('div', { class: 'card-head' }, [
+            h('div', {}, [h('h5', { text: item.title }), h('p', { class: 'meta-text', text: [item.source, item.publishedAt].filter(Boolean).join(' · ') })]),
+            h('button', {
+              class: 'danger',
+              text: 'Remove',
+              onclick: function () {
+                doc.items = doc.items.filter(function (x) { return x.id !== item.id; });
+                save();
+                renderCurrent();
+                status('Saved card removed.');
+              }
+            })
+          ]),
+          h('p', { text: item.summary }),
+          item.reason ? h('p', { class: 'meta-text', text: 'Why it matters: ' + item.reason }) : null,
+          item.url ? h('p', { class: 'r-cite' }, [h('a', { href: safeUrl(item.url), target: '_blank', rel: 'noopener noreferrer', text: item.url })]) : null
+        ]));
+      });
+      box.appendChild(wrap);
+    });
+    return box;
+  }
+
+  function documentDialog() {
+    var form = h('form', {
+      method: 'dialog',
+      id: 'r-doc-form',
+      onsubmit: function (e) {
+        var submitter = e.submitter;
+        if (submitter && submitter.value === 'cancel') return;
+        e.preventDefault();
+        var title = $('r-doc-title').value.trim();
+        var card = cardById(ui.pendingCardId);
+        if (!title || !card) return;
+        var doc = { id: uid('DOC'), title: title, items: [] };
+        state.documents.unshift(doc);
+        addCardToDocument(card, doc.id);
+        ui.pendingCardId = '';
+        save();
+        $('r-doc-dialog').close();
+        renderCurrent();
+        status('Document created.');
+      }
+    }, [
+      h('h3', { text: 'Create new document' }),
+      h('p', { class: 'helper', text: 'The selected AI result card will be added automatically.' }),
+      h('label', {}, [h('span', { text: 'Document title' }), h('input', { id: 'r-doc-title', name: 'title', maxlength: '120', required: 'required' })]),
+      h('div', { class: 'r-row' }, [
+        h('button', { value: 'cancel', text: 'Cancel' }),
+        h('button', { class: 'primary', value: 'ok', text: 'Create document' })
+      ])
+    ]);
+    return h('dialog', { id: 'r-doc-dialog' }, [form]);
+  }
+
+  function composeCaptureText(card) {
+    return [card.summary, card.reason].filter(Boolean).join(' ');
+  }
+
+  function snippetSentences(card) {
+    var text = composeCaptureText(card);
+    var matches = text.match(/[^.!?]+[.!?]+(\s|$)/g) || [text];
+    return matches.map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3);
+  }
+
+  function focusPromptForCard(card) {
+    return 'Find more detailed and corroborating sources about: ' + [card.title, card.summary, card.reason].filter(Boolean).join(' ');
+  }
+
+  function addCardToDocument(card, docId) {
+    var doc = documentById(docId);
+    if (!doc || !card) return false;
+    var exists = doc.items.some(function (item) {
+      return item.title === card.title && item.url === card.url;
+    });
+    if (exists) {
+      status('That card is already in ' + doc.title + '.');
+      return false;
+    }
+    doc.items.unshift({
+      id: uid('ITEM'),
+      title: card.title,
+      summary: card.summary,
+      reason: card.reason,
+      url: card.url,
+      source: card.source,
+      publishedAt: card.publishedAt,
+      query: card.query,
+      origin: card.origin
+    });
+    save();
+    return true;
   }
 
   function manualForm() {
@@ -79,33 +452,127 @@
     } }, [h('strong', { text: 'Capture from another source' }), t, title, url, h('button', { text: 'Capture' })]);
   }
 
-  function runSearch(name) {
-    var box = $('r-results');
-    if (!name) return;
-    box.textContent = 'Searching…';
-    var api = 'https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrlimit=8&prop=extracts%7Cinfo&exintro=1&explaintext=1&exsentences=5&inprop=url&format=json&origin=*&gsrsearch=' + encodeURIComponent(name);
-    fetch(api).then(function (r) { return r.json(); }).then(function (d) {
-      var pages = d.query ? Object.keys(d.query.pages).map(function (k) { return d.query.pages[k]; }) : [];
-      pages.sort(function (a, b) { return a.index - b.index; });
-      results = pages.map(function (p) { return { title: p.title, text: p.extract || '', url: p.fullurl }; }).filter(function (r) { return r.text; });
-      drawResults(results.length ? '' : 'No results found.');
-      status(results.length + ' results');
-    }).catch(function () { drawResults('Search failed. Check your connection, or capture text manually.'); });
+  async function runSearch(query, mode, sourceCard) {
+    if (!query) return;
+    if (!state.settings.apiKey) {
+      ui.error = 'Add an OpenAI API key before using AI-powered search.';
+      renderCurrent();
+      status(ui.error);
+      return;
+    }
+
+    ui.loading = mode === 'search';
+    ui.focusingCardId = mode === 'focus' && sourceCard ? sourceCard.id : '';
+    ui.error = '';
+    renderCurrent();
+
+    try {
+      var payload = buildSearchPrompt(query, mode, sourceCard);
+      var response = await fetchResponses(payload);
+      var parsed = extractJson(extractOutputText(response));
+      var cards = normalizeResults(parsed.results || [], query, mode);
+
+      if (mode === 'focus') {
+        state.focusQuery = query;
+        state.focusSummary = String(parsed.summary || '');
+        state.focusResults = cards;
+        status(cards.length + ' focus results');
+      } else {
+        state.lastQuery = query;
+        state.lastSummary = String(parsed.summary || '');
+        state.results = cards;
+        status(cards.length + ' results');
+      }
+      save();
+    } catch (err) {
+      ui.error = err.message || 'Search failed.';
+      status(ui.error);
+    } finally {
+      ui.loading = false;
+      ui.focusingCardId = '';
+      renderCurrent();
+    }
   }
 
-  function drawResults(msg) {
-    var box = $('r-results'); if (!box) return;
-    box.textContent = msg || '';
-    results.forEach(function (r) {
-      var sentences = r.text.match(/[^.!?]+[.!?]+(\s|$)/g) || [r.text];
-      var card = h('div', { class: 'r-card' }, [h('strong', { text: r.title }), h('p', { text: r.text }),
-        h('div', { class: 'r-cite' }, [h('a', { href: safeUrl(r.url), target: '_blank', rel: 'noopener noreferrer', text: r.url })])]);
-      card.appendChild(h('button', { text: 'Capture all', onclick: function () { addCapture(r.text, r.title, r.url); } }));
-      sentences.forEach(function (s) {
-        card.appendChild(h('button', { text: 'Capture: “' + s.trim().slice(0, 40) + '…”', title: s.trim(), onclick: function () { addCapture(s, r.title, r.url); } }));
+  function buildSearchPrompt(query, mode, sourceCard) {
+    return [
+      'You are a research assistant returning concise web search result cards.',
+      mode === 'focus' && sourceCard ? 'Focus from this card: ' + sourceCard.title + '. ' + sourceCard.summary + '. ' + sourceCard.reason : '',
+      'User query: ' + query,
+      'Return strict JSON only.',
+      'Schema: {"summary":"brief overview","results":[{"title":"","summary":"","reason":"","url":"","source":"","publishedAt":"","focusPrompt":""}]}',
+      'Provide 4 to 6 results with absolute URLs.'
+    ].filter(Boolean).join('\n');
+  }
+
+  async function fetchResponses(input) {
+    var lastError = null;
+    for (var i = 0; i < TOOL_TYPES.length; i++) {
+      var response = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + state.settings.apiKey
+        },
+        body: JSON.stringify({
+          model: state.settings.model,
+          tools: [{ type: TOOL_TYPES[i] }],
+          input: input
+        })
       });
-      box.appendChild(card);
+
+      if (response.ok) return response.json();
+      var text = await response.text();
+      lastError = new Error(parseApiError(text, response.status));
+      if (!/web_search/i.test(text) && response.status !== 400) break;
+    }
+    throw lastError || new Error('Search failed.');
+  }
+
+  function parseApiError(text, status) {
+    try {
+      var parsed = JSON.parse(text);
+      if (parsed && parsed.error && parsed.error.message) return parsed.error.message;
+    } catch (err) {}
+    return 'OpenAI request failed with status ' + status + '.';
+  }
+
+  function extractOutputText(response) {
+    if (response && typeof response.output_text === 'string' && response.output_text.trim()) return response.output_text.trim();
+    if (!response || !Array.isArray(response.output)) return '';
+    var parts = [];
+    response.output.forEach(function (item) {
+      (item.content || []).forEach(function (content) {
+        if (content.type === 'output_text' && content.text) parts.push(content.text);
+      });
     });
+    return parts.join('\n').trim();
+  }
+
+  function extractJson(text) {
+    if (!text) throw new Error('The AI response was empty.');
+    var cleaned = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+    var start = cleaned.indexOf('{');
+    var end = cleaned.lastIndexOf('}');
+    if (start < 0 || end < start) throw new Error('The AI response did not contain JSON.');
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+
+  function normalizeResults(results, query, origin) {
+    return (Array.isArray(results) ? results : []).map(function (result) {
+      return normalizeCard({
+        id: uid('R'),
+        title: result.title || 'Untitled result',
+        summary: result.summary || '',
+        reason: result.reason || '',
+        url: result.url || '',
+        source: result.source || '',
+        publishedAt: result.publishedAt || '',
+        query: query,
+        origin: origin,
+        focusPrompt: result.focusPrompt || ''
+      });
+    }).filter(Boolean);
   }
 
   function drawCaptures() {
@@ -128,7 +595,7 @@
     return t + ' (Source: ' + title + (safeUrl(url) ? ', ' + url : '') + ', accessed ' + accessed() + '.)';
   }
   function addCapture(text, title, url) {
-    var c = { id: uid(), raw: text.trim(), title: title, url: url, verbiage: toVerbiage(text, title, url) };
+    var c = { id: uid('CAP'), raw: text.trim(), title: title, url: url, verbiage: toVerbiage(text, title, url) };
     state.captures.push(c); save(); status('Captured from ' + title);
     var hd = document.querySelector('#r-captures'); if (hd) drawCaptures();
   }
@@ -273,8 +740,8 @@
         var w = words(t), s = sentences(t), tone = [];
         if (!/\b(i|you|we|my|our)\b/i.test(t) && !/!/.test(t)) tone.push('objective');
         if (count(w, ['therefore', 'furthermore', 'pursuant', 'accordingly', 'moreover', 'regarding']) || !/\b\w+'\w+\b/.test(t)) tone.push('formal');
-        if (count(w, ['should', 'must', 'clearly', 'obviously', 'ensure']) ) tone.push('persuasive');
-        if (count(w, ['understand', 'sorry', 'concern', 'support', 'hardship']) ) tone.push('empathetic');
+        if (count(w, ['should', 'must', 'clearly', 'obviously', 'ensure'])) tone.push('persuasive');
+        if (count(w, ['understand', 'sorry', 'concern', 'support', 'hardship'])) tone.push('empathetic');
         var intent = /\?/.test(t) ? 'inquire' : count(w, ['request', 'please', 'require', 'must', 'should']) ? 'request action' : count(w, NEG) > count(w, POS) ? 'complain' : count(w, POS) ? 'praise' : 'inform';
         return pre('Tone: ' + (tone.join(', ') || 'neutral') + '\nLikely intent: ' + intent + '\nSentences analysed: ' + s.length);
       }]]],

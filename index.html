@@ -11,7 +11,7 @@
 <header class="topbar">
   <div>
     <h1>CasePerfect <small>Workflow pain-point mapper</small></h1>
-    <p class="tagline">Map research workflows, rank friction, and shape accessible product ideas.</p>
+    <p class="tagline">Map research workflows, search with AI, save evidence into documents, and shape accessible product ideas.</p>
   </div>
   <div class="actions">
     <button id="btn-new" class="primary">+ New workflow</button>
@@ -76,6 +76,18 @@
     <div class="row">
       <button value="cancel" formnovalidate>Cancel</button>
       <button value="ok" class="primary">Create workflow</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="document-dialog">
+  <form method="dialog" id="document-form">
+    <h2>Create new document</h2>
+    <p class="helper">The selected AI result card will be added to this document automatically.</p>
+    <label>Document title <input name="title" maxlength="120" required></label>
+    <div class="row">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button value="ok" class="primary">Create document</button>
     </div>
   </form>
 </dialog>
